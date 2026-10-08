@@ -13,5 +13,5 @@ import playwright as pw
 
 df = pd.read_excel("Dados/Excluir BOT.xlsx")
 
-for dado in df:
-    df.loc[df["Código"]]
+#for dado in df:
+df.loc["Código"]
