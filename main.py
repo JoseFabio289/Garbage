@@ -124,8 +124,7 @@ with sync_playwright() as p:
                 else:
                     # Localizador da lixeira
                     lixeira = page.locator(
-                        "button[title*='Excluir'], "
-                        "button[aria-label*='Excluir']"
+                        'button:has(mat-icon[data-mat-icon-name="delete"])'
                     )
 
                     lixeira.click()
