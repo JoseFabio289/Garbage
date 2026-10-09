@@ -4,7 +4,7 @@ from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeo
 # ==========================================
 # CONFIGURAÇÕES
 # ==========================================
-EXCEL_PATH = "Dados/Excluir BOT_teste.xlsx"
+EXCEL_PATH = "Dados/Excluir BOT.xlsx"
 URL = "https://botnext.wts.chat/chat2/sessions"
 
 SIMULACAO = True
@@ -189,3 +189,7 @@ for cf in codigos:
         status = "ERRO"
     else:
         status = "NÃO PROCESSADO"
+
+    print(f"{cf:<20} | {status}")
+
+print("=" * 50)
