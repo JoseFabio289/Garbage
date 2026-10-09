@@ -173,17 +173,19 @@ print("\n" + "=" * 50)
 print("RESUMO DA EXECUÇÃO")
 print("=" * 50)
 
-print(f"Modo: {'SIMULAÇÃO' if SIMULACAO else 'REAL'}")
 print(f"Total: {len(codigos)}")
 print(f"Sucessos: {len(sucessos)}")
 print(f"Não encontrados: {len(nao_encontrados)}")
 print(f"Erros: {len(erros)}")
 
-print("\nREGISTROS PROCESSADOS:")
-for cf in sucessos:
-    print(f"- {cf}")
+print("\nSTATUS POR CF:")
 
-if erros:
-    print("\nERROS:")
-    for cf, erro in erros:
-        print(f"- {cf}: {erro}")
+for cf in codigos:
+    if cf in sucessos:
+        status = "SIMULADO" if SIMULACAO else "EXCLUSÃO EXECUTADA"
+    elif cf in nao_encontrados:
+        status = "NÃO ENCONTRADO"
+    elif any(codigo == cf for codigo, _ in erros):
+        status = "ERRO"
+    else:
+        status = "NÃO PROCESSADO"
