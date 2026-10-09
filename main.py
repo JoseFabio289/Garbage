@@ -1,153 +1,190 @@
-import time
 import pandas as pd
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
 # ==========================================
 # CONFIGURAÇÕES
 # ==========================================
-EXCEL_PATH = "Dados/Excluir BOT.xlsx"
-SIMULACAO = True           # True = apenas simula | False = exclui de verdade
-INTERVALO_ACAO = 1.0       # Intervalo de 1 segundo entre ações
-INTERVALO_REGISTRO = 3.0   # Intervalo de 3 segundos entre mudança de registro
+EXCEL_PATH = "Dados/Excluir BOT_teste.xlsx"
+URL = "https://botnext.wts.chat/chat2/sessions"
 
-<<<<<<< HEAD
-#for dado in df:
-df.loc["Código"]
-=======
+SIMULACAO = True
+TIMEOUT = 15000
+
 # ==========================================
-# 1. LEITURA DA PLANILHA
+# LEITURA DOS DADOS
 # ==========================================
 df = pd.read_excel(EXCEL_PATH, dtype=str)
-codigos = df["Código"].dropna().str.strip().unique().tolist()
-codigos = [c for c in codigos if c]
+
+codigos = (
+    df["Código"]
+    .dropna()
+    .str.strip()
+    .loc[lambda x: x.ne("")]
+    .drop_duplicates()
+    .tolist()
+)
 
 sucessos = []
 nao_encontrados = []
 erros = []
 
 # ==========================================
-# 2. AUTOMAÇÃO PLAYWRIGHT
+# AUTOMAÇÃO
 # ==========================================
 with sync_playwright() as p:
-    # Abre o Chrome maximizado e com sessão persistente
+
     browser = p.chromium.launch_persistent_context(
         "./sessao",
         headless=False,
         args=["--start-maximized"],
         no_viewport=True
     )
+
     page = browser.pages[0] if browser.pages else browser.new_page()
+    page.set_default_timeout(TIMEOUT)
 
-    page.goto("https://botnext.wts.chat/chat2/sessions")
-
-    # 1. CRM -> Painéis
-    crm = page.get_by_text("CRM", exact=True)
-    crm.hover()
-    time.sleep(INTERVALO_ACAO)
-    crm.click()
-    time.sleep(INTERVALO_ACAO)
-
-    page.get_by_text("Painéis", exact=True).click()
-    time.sleep(INTERVALO_ACAO)
-    
-    # Se estiver na tela de seleção de painéis, pesquisa e abre o painel
     try:
-        campo_painel = page.get_by_placeholder("Pesquisar por painel")
-        if campo_painel.is_visible(timeout=3000):
+        page.goto(URL, wait_until="domcontentloaded")
+
+        # CRM -> Painéis
+        crm = page.get_by_text("CRM", exact=True)
+        crm.hover()
+        crm.click()
+
+        page.get_by_text("Painéis", exact=True).click()
+
+        # Seleção do painel
+        campo_painel = page.get_by_placeholder(
+            "Pesquisar por painel"
+        )
+
+        if campo_painel.count() > 0:
             campo_painel.fill("CRM Falavinha")
-            time.sleep(INTERVALO_ACAO)
-            page.locator("button:has-text('Abrir'), a:has-text('Abrir')").first.click()
-            time.sleep(INTERVALO_ACAO)
-    except Exception:
-        pass
 
-    # 3. Alterna para visualização em Lista (clique no switch da lista)
-    switch_lista = page.locator('[data-cy="button-panel-view-list"]')
-    switch_lista.wait_for(state="visible", timeout=20000)
-    switch_lista.click()
-    time.sleep(INTERVALO_ACAO)
+            page.locator(
+                "button:has-text('Abrir'), a:has-text('Abrir')"
+            ).first.click()
 
-    # Aguarda o campo de busca da lista estar visível
-    campo_busca = page.locator('[data-cy="dashboard-filter-text"]').or_(page.get_by_placeholder("Pesquisar"))
-    campo_busca.wait_for(state="visible", timeout=20000)
+        # Alternar para lista
+        switch_lista = page.locator(
+            '[data-cy="button-panel-view-list"]'
+        )
 
-    # ==========================================
-    # 4. PROCESSAMENTO DOS CÓDIGOS CF
-    # ==========================================
-    for cf in codigos:
-        try:
-            # Busca o código na lista
-            busca = page.locator('[data-cy="dashboard-filter-text"]').or_(page.get_by_placeholder("Pesquisar"))
-            busca.fill("")
-            time.sleep(INTERVALO_ACAO)
-            busca.fill(cf)
-            busca.press("Enter")
-            time.sleep(INTERVALO_ACAO)
+        switch_lista.click()
 
-            # Localiza correspondência exata do código
-            celulas = page.get_by_text(cf, exact=True)
-            if celulas.count() != 1:
-                nao_encontrados.append(cf)
-                time.sleep(INTERVALO_REGISTRO)
-                continue
+        # Campo de pesquisa
+        busca = page.locator(
+            '[data-cy="dashboard-filter-text"]'
+        )
 
-            # Abre o card
-            celulas.first.click()
-            page.wait_for_url("**/card/**")
-            time.sleep(INTERVALO_ACAO)
+        busca.wait_for(state="visible")
 
-            if SIMULACAO:
-                # Fecha o card sem excluir
+        # ==========================================
+        # PROCESSAMENTO
+        # ==========================================
+        for cf in codigos:
+
+            try:
+                busca.fill(cf)
+                busca.press("Enter")
+
+                # Aguarda o resultado específico aparecer
+                celula = page.get_by_text(cf, exact=True)
+
+                try:
+                    celula.first.wait_for(
+                        state="visible",
+                        timeout=5000
+                    )
+
+                except PlaywrightTimeoutError:
+                    nao_encontrados.append(cf)
+                    print(f"[NÃO ENCONTRADO] {cf}")
+                    continue
+
+                # Segurança: não processar resultados ambíguos
+                if celula.count() != 1:
+                    erros.append((cf, "Múltiplas correspondências"))
+                    continue
+
+                celula.click()
+
+                page.wait_for_url("**/card/**")
+
+                if SIMULACAO:
+                    print(f"[SIMULAÇÃO] {cf}")
+
+                    page.keyboard.press("Escape")
+
+                    page.wait_for_url(
+                        lambda url: "/card/" not in url,
+                        timeout=5000
+                    )
+
+                else:
+                    # Localizador da lixeira
+                    lixeira = page.locator(
+                        "button[title*='Excluir'], "
+                        "button[aria-label*='Excluir']"
+                    )
+
+                    lixeira.click()
+
+                    # Confirmação
+                    confirmar = page.get_by_role(
+                        "button",
+                        name="Excluir",
+                        exact=True
+                    )
+
+                    confirmar.click()
+
+                    confirmar.wait_for(state="hidden")
+
+                    print(f"[EXCLUÍDO] {cf}")
+
+                sucessos.append(cf)
+
+            except Exception as e:
+                erros.append((cf, str(e)))
+                print(f"[ERRO] {cf}: {e}")
+
                 page.keyboard.press("Escape")
-                time.sleep(INTERVALO_ACAO)
+
+                # Recupera a navegação, se necessário
                 if "/card/" in page.url:
-                    page.locator("button:has(svg)").first.click()
-                    time.sleep(INTERVALO_ACAO)
-                sucessos.append(cf)
-            else:
-                # Localiza a lixeira no rodapé do card
-                lixeira = page.locator("button[title*='Excluir'], button[aria-label*='Excluir']").first
-                if not lixeira.is_visible():
-                    lixeira = page.locator("div:has-text('Configurar campos') button").nth(2)
-                if not lixeira.is_visible():
-                    lixeira = page.locator("button:has(svg)").filter(has=page.locator("path[d*='19'], path[d*='trash']")).first
+                    page.goto(
+                        URL,
+                        wait_until="domcontentloaded"
+                    )
+                    # A navegação de recuperação precisa
+                    # retornar ao painel/lista antes de continuar.
+                    raise RuntimeError(
+                        "Navegação perdida. "
+                        "Reabra o painel antes de continuar."
+                    )
 
-                lixeira.click()
-                time.sleep(INTERVALO_ACAO)
-
-                # Confirma no modal "Excluir Card"
-                btn_confirmar = page.locator("div:has-text('Excluir Card') button:has-text('Excluir')").first
-                btn_confirmar.wait_for(state="visible", timeout=5000)
-                btn_confirmar.click()
-                btn_confirmar.wait_for(state="hidden", timeout=10000)
-                time.sleep(INTERVALO_ACAO)
-
-                sucessos.append(cf)
-
-            time.sleep(INTERVALO_REGISTRO)
-
-        except Exception as e:
-            erros.append((cf, str(e)))
-            page.keyboard.press("Escape")
-            time.sleep(INTERVALO_REGISTRO)
-
-    browser.close()
+    finally:
+        browser.close()
 
 # ==========================================
-# 5. RESUMO FINAL
+# RELATÓRIO
 # ==========================================
-rotulo = "SIMULADAS" if SIMULACAO else "EXCLUÍDAS"
-print("\n" + "=" * 55)
-print("              RESUMO DA EXECUÇÃO")
-print("=" * 55)
-print(f"Modo:               {'SIMULAÇÃO' if SIMULACAO else 'EXCLUSÃO REAL'}")
-print(f"Total na planilha:  {len(codigos)}")
-print(f"{rotulo.capitalize()} com sucesso: {len(sucessos)}")
-print(f"Não encontrados:    {len(nao_encontrados)}")
-print(f"Erros:              {len(erros)}")
-print("-" * 55)
-print(f"LINHAS {rotulo} COM SUCESSO ({len(sucessos)}):")
-for item in sucessos:
-    print(f"- {item}")
-print("=" * 55 + "\n")
->>>>>>> 710e31223ff3d7496ff04183ca710b49829ba480
+print("\n" + "=" * 50)
+print("RESUMO DA EXECUÇÃO")
+print("=" * 50)
+
+print(f"Modo: {'SIMULAÇÃO' if SIMULACAO else 'REAL'}")
+print(f"Total: {len(codigos)}")
+print(f"Sucessos: {len(sucessos)}")
+print(f"Não encontrados: {len(nao_encontrados)}")
+print(f"Erros: {len(erros)}")
+
+print("\nREGISTROS PROCESSADOS:")
+for cf in sucessos:
+    print(f"- {cf}")
+
+if erros:
+    print("\nERROS:")
+    for cf, erro in erros:
+        print(f"- {cf}: {erro}")
